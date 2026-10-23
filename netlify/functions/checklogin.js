@@ -1,20 +1,17 @@
-const { db, checkPass, json } = require('./_lib');
+const { db, hashPass, json } = require('./_lib');
 
-// TEMPORARY test. Reports only whether the password matches. Delete after testing.
+// TEMPORARY one-time setup. Creates or resets the owner using the live site's own database connection.
+// DELETE THIS FILE right after using it once.
 exports.handler = async (event) => {
-  const src = event.httpMethod === 'POST' ? JSON.parse(event.body || '{}') : (event.queryStringParameters || {});
-  const username = src.username || src.u;
-  const password = src.password || src.p;
+  const q = event.queryStringParameters || {};
+  if (!q.u || !q.p || q.p.length < 8) return json(400, { error: 'Use ?u=ceo&p=yourpassword (8+ characters)' });
   try {
-    const rows = await db(`owners?username=eq.${encodeURIComponent(String(username || ''))}&select=pass_hash`);
-    if (!rows.length) return json(200, { user_found: false });
-    const stored = rows[0].pass_hash;
-    return json(200, {
-      user_found: true,
-      hash_length: stored.length,
-      has_colon: stored.includes(':'),
-      password_matches: checkPass(String(password || ''), stored)
+    await db('owners?on_conflict=username', {
+      method: 'POST',
+      prefer: 'resolution=merge-duplicates,return=minimal',
+      body: { username: q.u, pass_hash: hashPass(q.p) }
     });
+    return json(200, { ok: true, message: 'Owner saved. Now delete this file.' });
   } catch (e) {
     return json(500, { error: e.message });
   }
