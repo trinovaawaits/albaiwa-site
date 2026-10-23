@@ -2,8 +2,9 @@ const { db, checkPass, json } = require('./_lib');
 
 // TEMPORARY test. Reports only whether the password matches. Delete after testing.
 exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') return json(405, { error: 'POST only' });
-  const { username, password } = JSON.parse(event.body || '{}');
+  const src = event.httpMethod === 'POST' ? JSON.parse(event.body || '{}') : (event.queryStringParameters || {});
+  const username = src.username || src.u;
+  const password = src.password || src.p;
   try {
     const rows = await db(`owners?username=eq.${encodeURIComponent(String(username || ''))}&select=pass_hash`);
     if (!rows.length) return json(200, { user_found: false });
