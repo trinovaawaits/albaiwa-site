@@ -1,0 +1,9 @@
+{
+  "name": "Al-Bai' Wa Al-Shiraa",
+  "short_name": "Albai Shiraa",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#0E5552",
+  "icons": []
+}
