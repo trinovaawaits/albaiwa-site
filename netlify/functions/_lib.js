@@ -1,6 +1,6 @@
 const crypto = require('crypto');
+const SB_URL = process.env.SUPABASE_URL || 'https://xsuyljbgkqpqidyowuhq.supabase.co';
 
-const SB_URL = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 const SECRET = process.env.SESSION_SECRET;
 
