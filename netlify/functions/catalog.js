@@ -8,6 +8,7 @@ exports.handler = async (event) => {
     const products = await db('products?select=id,shop_id,name,category,price,stock,colors,sizes,image_url&order=created_at.desc');
     return json(200, { shops, products });
   } catch (e) {
+    console.error('CATALOG ERROR:', e.message);
     return json(500, { error: 'Server error' });
   }
 };
