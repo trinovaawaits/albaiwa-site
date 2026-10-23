@@ -1,24 +1,36 @@
 (function () {
   const { api, esc, money } = AB;
   const app = document.getElementById('app');
-  const S = { shops: [], products: [], cart: {}, shopId: null, q: '', timer: null };
+  const S = { shops: [], products: [], cart: {}, shopId: null, q: '', timer: null, activeOrder: null };
+
+  // Theme: dark teal (default) or white. Remembered on this device.
+  function applyTheme(t) { document.body.classList.toggle('dark', t !== 'light'); }
+  applyTheme(localStorage.getItem('ab_theme') || 'dark');
+  document.getElementById('theme').addEventListener('click', () => {
+    const next = document.body.classList.contains('dark') ? 'light' : 'dark';
+    localStorage.setItem('ab_theme', next); applyTheme(next);
+  });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
 
-  function savedOrders() { return JSON.parse(localStorage.getItem('ab_orders') || '[]'); }
+  const savedOrders = () => JSON.parse(localStorage.getItem('ab_orders') || '[]');
+  const bubbles = (msgs) => msgs.map((m) => `<div class="bub ${m.sender_type === 'customer' ? 'me' : ''}">${esc(m.body)}</div>`).join('');
 
   function home() {
     S.shopId = null;
     app.innerHTML = `
-      <section class="hero">
-        <img class="mark" src="/assets/albaiwa-mark.png" alt="">
-        <img src="/assets/albaiwa-wordmark.png" alt="البيع والشراء" style="width:min(340px,80%)">
+      <section class="hero tex">
+        <div class="big"><img src="/assets/albaiwa-mark.png" alt=""></div>
+        <img class="hero-wm" src="/assets/albaiwa-wordmark.png" alt="البيع والشراء">
+        <p>Buy and sell across Lahore’s markets, in one place.</p>
         <input id="q" class="search" placeholder="Search products across all shops" value="${esc(S.q)}">
       </section>
       <div id="res"></div>
-      <h2>Shops</h2>
-      <div class="grid">${S.shops.map((s) => `<a class="card" href="#/shop/${s.id}"><b>${esc(s.name)}</b><div class="meta">${esc(s.market || '')} · ${esc(s.hours || '')}</div></a>`).join('') || '<p class="meta">No shops yet.</p>'}</div>
-      ${savedOrders().length ? `<h2>Your orders</h2>${savedOrders().map((o, i) => `<div class="row"><div><b>Order #${o.n}</b><div class="meta">${money(o.total)}</div></div><button class="g" data-open="${i}">Open chat</button></div>`).join('')}` : ''}`;
+      <div class="sec-h"><h2>Shops</h2></div>
+      <div class="grid">${S.shops.map((s) => `
+        <a class="card" href="#/shop/${s.id}"><b>${esc(s.name)}</b><div class="meta">${esc(s.market || '')} · ${esc(s.hours || '')}</div></a>`).join('') || '<p class="meta">No shops yet.</p>'}</div>
+      ${savedOrders().length ? `<div class="sec-h"><h2>Your orders</h2></div>${savedOrders().map((o, i) => `
+        <div class="row"><div class="grow"><b>Order #${o.n}</b><div class="meta">${money(o.total)}</div></div><button class="g" data-open="${i}">Open chat</button></div>`).join('')}` : ''}`;
     document.getElementById('q').addEventListener('input', (e) => { S.q = e.target.value; results(); });
     results();
   }
@@ -29,7 +41,7 @@
     const list = q ? S.products.filter((p) => (p.name + ' ' + (p.category || '')).toLowerCase().includes(q)).slice(0, 40) : [];
     box.innerHTML = list.map((p) => {
       const s = S.shops.find((x) => x.id === p.shop_id); if (!s) return '';
-      return `<a class="row" href="#/shop/${s.id}"><div><b>${esc(p.name)}</b><div class="meta">${esc(s.name)} · ${p.stock > 0 ? 'In stock' : 'Out of stock'}</div></div><div class="price">${money(p.price)}</div></a>`;
+      return `<a class="row" href="#/shop/${s.id}"><div class="grow"><b>${esc(p.name)}</b><div class="meta">${esc(s.name)} · ${p.stock > 0 ? 'In stock' : 'Out of stock'}</div></div><div class="price">${money(p.price)}</div></a>`;
     }).join('');
   }
 
@@ -42,7 +54,7 @@
       <header class="shop-h"><img class="shop-logo" data-shoplogo src="${esc(s.logo_url || '/assets/albaiwa-mark.png')}" alt="">
         <div><h2 style="margin:0">${esc(s.name)}</h2><div class="meta">${esc(s.market || '')} · ${esc(s.hours || '')}</div></div></header>
       <div class="two"><section>${items.map((p) => `
-        <div class="row"><div><b>${esc(p.name)}</b><div class="meta">${esc(p.category || '')} · ${p.stock > 0 ? 'In stock' : 'Out of stock'}</div></div>
+        <div class="row"><div class="grow"><b>${esc(p.name)}</b><div class="meta">${esc(p.category || '')} · ${p.stock > 0 ? 'In stock' : 'Out of stock'}</div></div>
         <div class="price">${money(p.price)}</div><button data-add="${p.id}" ${p.stock > 0 ? '' : 'disabled'}>Add</button></div>`).join('') || '<p class="meta">No products yet.</p>'}</section>
       <aside id="cart"></aside></div>`;
     window.ABSecret && ABSecret.bind(app.querySelector('[data-shoplogo]'), 'shop');
@@ -52,14 +64,14 @@
   function cart() {
     const box = document.getElementById('cart'); if (!box) return;
     const ids = Object.keys(S.cart);
-    if (!ids.length) { box.innerHTML = '<div class="form"><b>Your cart is empty</b><span class="meta">Add products to checkout.</span></div>'; return; }
+    if (!ids.length) { box.innerHTML = '<div class="card"><b>Your cart is empty</b><div class="meta">Add products to checkout.</div></div>'; return; }
     let total = 0;
     const lines = ids.map((id) => {
       const p = S.products.find((x) => x.id === id); const q = S.cart[id]; total += p.price * q;
-      return `<div class="row"><div style="flex:1"><b>${esc(p.name)}</b><div class="meta">${money(p.price)} each</div></div>
+      return `<div class="row"><div class="grow"><b>${esc(p.name)}</b><div class="meta">${money(p.price)} each</div></div>
         <button class="g" data-dec="${id}">−</button><b>${q}</b><button class="g" data-inc="${id}">+</button></div>`;
     }).join('');
-    box.innerHTML = `${lines}<div class="form"><b>Total: ${money(total)}</b>
+    box.innerHTML = `${lines}<div class="card form"><b>Total: ${money(total)}</b>
       <form id="checkout">
         <input name="name" placeholder="Your name" required>
         <input name="phone" placeholder="Phone (03xx-xxxxxxx)" required>
@@ -72,15 +84,14 @@
   function openChat(order) {
     S.activeOrder = order;
     const old = document.getElementById('chat'); if (old) old.remove();
-    app.insertAdjacentHTML('beforeend', `<section class="chat" id="chat"><b>Order #${order.n} chat</b>
+    app.insertAdjacentHTML('beforeend', `<section class="chat tex" id="chat"><b>Order #${order.n} chat</b>
       <div id="msgs" class="msgs"></div>
       <form id="sendf" class="compose"><input name="m" placeholder="Type a message" autocomplete="off"><button>Send</button></form></section>`);
     const load = async () => {
       try {
         const d = await api(`chat?thread_id=${order.thread}&token=${order.token}`);
         const box = document.getElementById('msgs'); if (!box) return;
-        box.innerHTML = d.messages.map((m) => `<div class="bub ${m.sender_type === 'customer' ? 'me' : ''}">${esc(m.body)}</div>`).join('');
-        box.scrollTop = box.scrollHeight;
+        box.innerHTML = bubbles(d.messages); box.scrollTop = box.scrollHeight;
       } catch (e) { /* keep polling */ }
     };
     load();
@@ -93,7 +104,7 @@
     const add = t.closest('[data-add]'); if (add) { S.cart[add.dataset.add] = (S.cart[add.dataset.add] || 0) + 1; cart(); return; }
     const inc = t.closest('[data-inc]'); if (inc) { S.cart[inc.dataset.inc]++; cart(); return; }
     const dec = t.closest('[data-dec]'); if (dec) { S.cart[dec.dataset.dec]--; if (S.cart[dec.dataset.dec] <= 0) delete S.cart[dec.dataset.dec]; cart(); return; }
-    const op = t.closest('[data-open]'); if (op) { openChat(savedOrders()[Number(op.dataset.open)]); }
+    const op = t.closest('[data-open]'); if (op) openChat(savedOrders()[Number(op.dataset.open)]);
   });
 
   app.addEventListener('submit', async (e) => {
@@ -121,7 +132,7 @@
         await api('chat', { method: 'POST', body: JSON.stringify({ thread_id: S.activeOrder.thread, token: S.activeOrder.token, body: text }) });
         f.m.value = '';
         const d = await api(`chat?thread_id=${S.activeOrder.thread}&token=${S.activeOrder.token}`);
-        document.getElementById('msgs').innerHTML = d.messages.map((m) => `<div class="bub ${m.sender_type === 'customer' ? 'me' : ''}">${esc(m.body)}</div>`).join('');
+        document.getElementById('msgs').innerHTML = bubbles(d.messages);
       } catch (err) { AB.toast(err.message); }
     }
   });
